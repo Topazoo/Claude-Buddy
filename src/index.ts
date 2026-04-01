@@ -57,6 +57,16 @@ daemon
   .action(() => daemonCommand("logs"));
 
 program
+  .command("card")
+  .description("Generate a shareable pet card")
+  .option("--copy", "Copy plain-text card to clipboard")
+  .option("--raw", "Output plain text (no ANSI colors)")
+  .action(async (opts) => {
+    const { cardCommand } = await import("./commands/card.js");
+    cardCommand(opts);
+  });
+
+program
   .command("feed")
   .description("Feed your buddy")
   .action(async () => {

@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsup",
+    "postinstall": "tsup",
+    "setup": "node dist/index.js install",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

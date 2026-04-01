@@ -1,4 +1,4 @@
-import type { Stats } from "../pet/state.js";
+import type { Stats, Mood } from "../pet/state.js";
 import type { DetectedPattern } from "./pattern-tracker.js";
 
 export interface Reaction {
@@ -16,15 +16,15 @@ interface TextVariant {
 // --- Reaction probabilities per tool type ---
 // Pattern reactions always fire (handled separately).
 const TOOL_REACTION_CHANCE: Record<string, number> = {
-  Read: 0.30,
-  Edit: 0.50,
-  Write: 0.60,
-  Bash: 0.50,
-  Grep: 0.35,
-  Glob: 0.25,
-  WebSearch: 0.70,
-  WebFetch: 0.50,
-  Agent: 0.60,
+  Read: 0.15,
+  Edit: 0.25,
+  Write: 0.30,
+  Bash: 0.25,
+  Grep: 0.15,
+  Glob: 0.10,
+  WebSearch: 0.35,
+  WebFetch: 0.25,
+  Agent: 0.30,
 };
 
 // --- Generic tool reaction templates ---
@@ -158,12 +158,115 @@ const PATTERN_REACTIONS: Record<string, TextVariant[]> = {
   ],
 };
 
+// --- Idle chatter templates ---
+
+const IDLE_CHATTER: Record<string, TextVariant[]> = {
+  bored: [
+    { base: "hello?", highSnark: "Oh, I see how it is.", highWisdom: "Silence has its own beauty." },
+    { base: "...", highSnark: "Guess I'll just sit here then.", highChaos: "HELLO?! ANYONE?!" },
+    { base: "anyone there?", highSnark: "Remember me? Your buddy?", highWisdom: "A good break sharpens the mind." },
+    { base: "tap tap tap", highSnark: "*taps foot impatiently*", highChaos: "I'M SO BORED!" },
+    { base: "*looks around*", highSnark: "This is riveting.", highWisdom: "Patience is a virtue." },
+    { base: "*whistles*", highSnark: "Don't mind me.", highChaos: "LA LA LA!" },
+    { base: "still here...", highSnark: "Yep. Still here. Waiting.", highWisdom: "Rest is productive too." },
+    { base: "*pokes screen*", highSnark: "Is this thing on?", highChaos: "WAKE UP WAKE UP!" },
+  ],
+  sleepy: [
+    { base: "zzz...", highSnark: "Wake me when you're back.", highChaos: "ZZZ... ZZZZ!" },
+    { base: "*yawns*", highSnark: "I guess sleep is self-care.", highWisdom: "Rest well to code well." },
+    { base: "so... tired...", highSnark: "You left me here. Alone.", highChaos: "*snores aggressively*" },
+    { base: "maybe just a quick nap...", highWisdom: "The mind consolidates during rest." },
+    { base: "*nods off*", highSnark: "Not like anything's happening.", highChaos: "FALLING... ASLEEP..." },
+    { base: "*eyelids heavy*", highWisdom: "Even the best need rest." },
+  ],
+};
+
+// --- Git & tool command reactions ---
+
+const GIT_REACTIONS: Record<string, TextVariant[]> = {
+  commit: [
+    { base: "Committing!", highSnark: "Committing! Bold move.", highChaos: "COMMIT COMMIT COMMIT!" },
+    { base: "Saving your work.", highWisdom: "Good checkpoint.", highSnark: "Hope those tests pass." },
+  ],
+  push: [
+    { base: "Pushing to remote.", highSnark: "Hope those tests passed.", highChaos: "YEET TO REMOTE!" },
+    { base: "Sending it upstream.", highWisdom: "Sharing your work." },
+  ],
+  "push --force": [
+    { base: "Force push?!", highSnark: "Living dangerously.", highChaos: "CHAOS REIGNS!" },
+    { base: "Rewriting history...", highWisdom: "Make sure the team knows." },
+  ],
+  pull: [
+    { base: "Pulling changes.", highSnark: "Let's see what others broke.", highWisdom: "Staying in sync." },
+  ],
+  merge: [
+    { base: "Merging...", highSnark: "Merge conflict incoming...", highChaos: "MERGE! COMBINE! FUSE!" },
+    { base: "Bringing branches together.", highWisdom: "Integration time." },
+  ],
+  rebase: [
+    { base: "Rebasing...", highSnark: "Rewriting history, are we?", highWisdom: "Clean history matters." },
+    { base: "Rebase in progress.", highChaos: "REORGANIZE EVERYTHING!" },
+  ],
+  checkout: [
+    { base: "Switching branches.", highSnark: "Off to another branch.", highWisdom: "Context switch." },
+  ],
+  stash: [
+    { base: "Stashing changes.", highSnark: "Hiding your work, huh?", highWisdom: "Saving for later. Smart." },
+  ],
+};
+
+const TOOL_CMD_REACTIONS: Record<string, TextVariant[]> = {
+  npm_install: [
+    { base: "Installing packages...", highSnark: "node_modules grows ever larger.", highChaos: "DOWNLOADING THE INTERNET!" },
+    { base: "Adding dependencies.", highWisdom: "Building on others' work." },
+  ],
+  test_run: [
+    { base: "Running tests.", highSnark: "Let's see how many break.", highWisdom: "Testing is investing in quality." },
+    { base: "Test time!", highChaos: "TESTS! GO GO GO!" },
+  ],
+  docker: [
+    { base: "Docker time.", highSnark: "Containerizing all the things.", highChaos: "CONTAINERS GO BRRRR!" },
+  ],
+};
+
+function classifyBashCommand(command: string): { category: string; templates: TextVariant[] } | null {
+  const cmd = command.trim().toLowerCase();
+
+  // Git commands
+  if (/^git\s+push\s+.*--force/.test(cmd) || /^git\s+push\s+-f\b/.test(cmd)) {
+    return { category: "git:push --force", templates: GIT_REACTIONS["push --force"] };
+  }
+  const gitMatch = cmd.match(/^git\s+(commit|push|pull|merge|rebase|checkout|switch|stash)\b/);
+  if (gitMatch) {
+    const sub = gitMatch[1] === "switch" ? "checkout" : gitMatch[1];
+    const templates = GIT_REACTIONS[sub];
+    if (templates) return { category: `git:${sub}`, templates };
+  }
+
+  // Package managers
+  if (/^(npm|yarn|pnpm|bun)\s+(install|add|i)\b/.test(cmd)) {
+    return { category: "npm_install", templates: TOOL_CMD_REACTIONS.npm_install };
+  }
+
+  // Test runners
+  if (/^(npm\s+test|yarn\s+test|npx\s+(jest|vitest)|jest|vitest|pytest|cargo\s+test|go\s+test)\b/.test(cmd)) {
+    return { category: "test_run", templates: TOOL_CMD_REACTIONS.test_run };
+  }
+
+  // Docker
+  if (/^docker\s/.test(cmd)) {
+    return { category: "docker", templates: TOOL_CMD_REACTIONS.docker };
+  }
+
+  return null;
+}
+
 // --- Selection logic ---
 
 function fillSlots(template: string, slots: Record<string, string | number>): string {
   let result = template;
   for (const [key, value] of Object.entries(slots)) {
-    result = result.replace(`{${key}}`, String(value));
+    result = result.replace(`{${key}}`, `\x01${String(value)}\x02`);
   }
   return result;
 }
@@ -223,6 +326,18 @@ export function selectReaction(input: ReactionInput): Reaction | null {
     };
   }
 
+  // Git & tool command reactions (higher probability)
+  if (tool === "Bash" && !isError && context.command) {
+    const classified = classifyBashCommand(String(context.command));
+    if (classified) {
+      const cmdChance = classified.category.startsWith("git:") ? 0.50 : 0.40;
+      if (random() <= cmdChance) {
+        const text = fillSlots(pickVariant(classified.templates, stats, random), context);
+        return { text, animation: classified.category.startsWith("git:") ? "excited" : "idle" };
+      }
+    }
+  }
+
   // Generic tool reactions with probability gating
   const category = isError ? "error" : tool;
   const chance = isError ? 0.40 : (TOOL_REACTION_CHANCE[tool] ?? 0.05);
@@ -233,4 +348,21 @@ export function selectReaction(input: ReactionInput): Reaction | null {
 
   const text = fillSlots(pickVariant(templates, stats, random), context);
   return { text, animation: animationForEvent(tool, isError) };
+}
+
+/**
+ * Select idle chatter when the pet is bored or sleepy.
+ * Called from the daemon tick loop.
+ */
+export function selectIdleChatter(mood: Mood, stats: Stats, random: () => number): Reaction | null {
+  const templates = IDLE_CHATTER[mood];
+  if (!templates) return null;
+
+  // Probability gate: bored chats more, sleepy chats less
+  const chance = mood === "bored" ? 0.15 : 0.08;
+  if (random() > chance) return null;
+
+  const text = pickVariant(templates, stats, random);
+  const animation = mood === "sleepy" ? "sleeping" : "idle";
+  return { text, animation };
 }

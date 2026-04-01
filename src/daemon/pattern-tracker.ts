@@ -69,6 +69,15 @@ export function processEvent(ctx: SessionContext, event: HookEvent): DetectedPat
     const count = (ctx.fileVisits.get(file) ?? 0) + 1;
     ctx.fileVisits.set(file, count);
 
+    // Cap fileVisits to prevent unbounded memory growth in long sessions
+    if (ctx.fileVisits.size > 200) {
+      // Evict least-visited entries
+      const entries = [...ctx.fileVisits.entries()].sort((a, b) => a[1] - b[1]);
+      for (let i = 0; i < 50; i++) {
+        ctx.fileVisits.delete(entries[i][0]);
+      }
+    }
+
     // File revisit (5+ times)
     if (count === 5 || count === 10 || count === 20) {
       patterns.push({

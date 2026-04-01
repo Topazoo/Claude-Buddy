@@ -7,7 +7,7 @@ import type { PetState } from "../pet/state.js";
 import type { SessionActivity } from "../pet/state.js";
 import { SocketServer } from "./socket-server.js";
 import { createSessionContext, processEvent, type SessionContext } from "./pattern-tracker.js";
-import { selectReaction } from "./reactions.js";
+import { selectReaction, selectIdleChatter } from "./reactions.js";
 import { tick } from "./ticker.js";
 import { writeState } from "./writer.js";
 import { mulberry32 } from "../utils.js";
@@ -42,7 +42,7 @@ function narrateSummary(summary: string, tool: string, stats: Stats, random: () 
   // Extract the key detail from the summary for {x} substitution
   const detail = summary.replace(/^(Reading|Editing|Created|Ran|Searching for|Finding files:|Researching:|Fetching|Agent:)\s*/i, "").replace(/["`]/g, "").slice(0, 20);
 
-  return template.replace("{x}", detail || "...");
+  return template.replace("{x}", `\x01${detail || "..."}\x02`);
 }
 
 function log(msg: string): void {
@@ -90,6 +90,9 @@ export async function runDaemon(): Promise<void> {
   let session = createSessionContext();
   let reactionRng = mulberry32(Date.now());
 
+  // Rate limit: max 1 reaction per 15 seconds
+  let lastReactionTime = 0;
+
   // Session activity for mood derivation
   const activity: SessionActivity = {
     lastEventTime: null,
@@ -99,8 +102,16 @@ export async function runDaemon(): Promise<void> {
     sessionStartTime: null,
   };
 
-  // Socket server
+  // Socket server — wrap handler in error boundary so one bad message never crashes the daemon
   const server = new SocketServer((msg: Record<string, unknown>, client: Socket) => {
+    try {
+      handleMessage(msg, client);
+    } catch (err) {
+      log(`Error handling message type=${msg.type}: ${err instanceof Error ? err.message : err}`);
+    }
+  });
+
+  function handleMessage(msg: Record<string, unknown>, client: Socket): void {
     const type = msg.type as string;
 
     if (type === "hook_event") {
@@ -161,17 +172,22 @@ export async function runDaemon(): Promise<void> {
       });
 
       // Speech bubble: pattern reaction if notable, personality narration otherwise
-      const speechText = reaction ? reaction.text : narrateSummary(summary, tool, state.stats, reactionRng);
-      const animation = reaction
-        ? reaction.animation
-        : (isError ? "startled" : tool === "WebSearch" ? "thinking" : tool === "Agent" ? "excited" : "idle");
+      // Rate-limited to 1 reaction per 15 seconds
+      const now = Date.now();
+      if (now - lastReactionTime >= 15_000) {
+        const speechText = reaction ? reaction.text : narrateSummary(summary, tool, state.stats, reactionRng);
+        const animation = reaction
+          ? reaction.animation
+          : (isError ? "startled" : tool === "WebSearch" ? "thinking" : tool === "Agent" ? "excited" : "idle");
 
-      server.broadcast({
-        type: "reaction",
-        pet: state.name,
-        text: speechText,
-        animation,
-      });
+        server.broadcast({
+          type: "reaction",
+          pet: state.name,
+          text: speechText,
+          animation,
+        });
+        lastReactionTime = now;
+      }
 
       // Also broadcast for the recent feed
       server.broadcast({
@@ -244,42 +260,77 @@ export async function runDaemon(): Promise<void> {
         });
       }
     }
-  });
+  }
 
   await server.start();
   log(`Socket server listening at ${BUDDY_HOME}/buddy.sock`);
 
-  // Tick loop: 60s
+  // Tick loop: 60s — wrapped in error boundary so one bad tick never crashes the daemon
   const tickInterval = setInterval(() => {
-    if (!state) {
-      state = loadGlobalState();
-      return;
-    }
+    try {
+      if (!state) {
+        state = loadGlobalState();
+        return;
+      }
 
-    const result = tick(state, activity);
+      const prevLevel = state.level;
+      const result = tick(state, activity);
 
-    for (const unlock of result.traitUnlocks) {
-      server.broadcast({
-        type: "trait_unlock",
-        trait: unlock.traitName,
-        level: 1,
-        pet: state.name,
-      });
-      log(`Trait unlocked: ${unlock.traitName}`);
-    }
+      for (const unlock of result.traitUnlocks) {
+        server.broadcast({
+          type: "trait_unlock",
+          trait: unlock.traitName,
+          level: 1,
+          pet: state.name,
+        });
+        log(`Trait unlocked: ${unlock.traitName}`);
+      }
 
-    if (result.stateChanged) {
-      writeState(BUDDY_GLOBAL_DIR, state);
+      // Level-up broadcast (for particle effects)
+      if (state.level > prevLevel) {
+        server.broadcast({ type: "level_up", level: state.level, pet: state.name });
+        log(`Level up: ${prevLevel} → ${state.level}`);
+      }
+
+      // Idle chatter: after 5 minutes of inactivity
+      const idleMs = activity.lastEventTime ? Date.now() - activity.lastEventTime : 0;
+      if (idleMs > 5 * 60_000) {
+        const chatter = selectIdleChatter(state.mood, state.stats, reactionRng);
+        if (chatter) {
+          server.broadcast({ type: "reaction", pet: state.name, text: chatter.text, animation: chatter.animation });
+        }
+      }
+
+      if (result.stateChanged) {
+        writeState(BUDDY_GLOBAL_DIR, state);
+      }
+    } catch (err) {
+      log(`Tick error (non-fatal): ${err instanceof Error ? err.message : err}`);
     }
   }, 60_000);
 
-  // Graceful shutdown
+  // Graceful shutdown with guards
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
     log("Shutting down...");
+    // Force exit after 5s if graceful shutdown hangs
+    const forceExit = setTimeout(() => {
+      log("Forced exit after timeout.");
+      process.exit(1);
+    }, 5000);
+    forceExit.unref();
+
     clearInterval(tickInterval);
     if (state) {
-      writeState(BUDDY_GLOBAL_DIR, state);
-      log("State saved.");
+      try {
+        writeState(BUDDY_GLOBAL_DIR, state);
+        log("State saved.");
+      } catch (err) {
+        log(`Failed to save state: ${err instanceof Error ? err.message : err}`);
+      }
     }
     await server.stop();
     log("Daemon stopped.");

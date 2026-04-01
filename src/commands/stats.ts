@@ -39,7 +39,7 @@ export function statsCommand(): void {
   console.log("");
 
   // Sprite
-  const f = getFrame(species, state.mood, 0);
+  const f = getFrame(species, state.mood, 0, level);
   const rendered = renderFrameAnsi(f.chars, f.tokens, palette);
   for (const line of rendered.split("\n")) {
     console.log(`  ${line}`);

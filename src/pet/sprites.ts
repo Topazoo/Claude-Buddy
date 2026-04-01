@@ -6,6 +6,7 @@ import { WORM_SPRITES } from "./sprites/worm.js";
 import { ROBOT_SPRITES } from "./sprites/robot.js";
 import { REPTILE_SPRITES } from "./sprites/reptile.js";
 import { GHOST_SPRITES } from "./sprites/ghost.js";
+import { applyEvolutions } from "./evolutions.js";
 
 // Re-export types
 export type { SpriteFrame, SpriteSet, AnimationState };
@@ -33,21 +34,31 @@ export function getFrame(
   species: Species,
   state: string,
   tick: number,
+  level?: number,
 ): SpriteFrame {
   const spriteSet = SPRITES[species];
   const animState = mapToAnimState(state);
   const frames = spriteSet[animState];
 
+  let frame: SpriteFrame;
+
   if (animState === "idle" && frames.length >= 4) {
     // Micro-animation: every 6 ticks, chance for a variant
     const cycle = tick % 12;
-    if (cycle === 5) return frames[2]; // blink
-    if (cycle === 9) return frames[3]; // look-around
-    return frames[tick % 2]; // normal sway
+    if (cycle === 5) frame = frames[2]; // blink
+    else if (cycle === 9) frame = frames[3]; // look-around
+    else frame = frames[tick % 2]; // normal sway
+  } else {
+    // For multi-frame states, alternate
+    frame = frames[tick % frames.length];
   }
 
-  // For multi-frame states, alternate
-  return frames[tick % frames.length];
+  // Apply evolution decorations based on level
+  if (level && level >= 5) {
+    return applyEvolutions(frame, species, level);
+  }
+
+  return frame;
 }
 
 /** Map mood/event state strings to animation state keys */

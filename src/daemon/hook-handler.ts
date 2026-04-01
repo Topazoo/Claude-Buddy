@@ -96,21 +96,33 @@ function extractContext(toolName: string, toolInput: Record<string, unknown>): R
 }
 
 export async function hookEventCommand(): Promise<void> {
-  const deadline = setTimeout(() => process.exit(0), 1000);
+  // Hard deadline: if anything goes wrong, exit cleanly so we never block Claude Code.
+  // .unref() so this timer alone won't keep the process alive (allows fast natural exit).
+  const deadline = setTimeout(() => process.exit(0), 800);
   deadline.unref();
 
   let input: HookInput;
   try {
     const chunks: Buffer[] = [];
     await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        process.stdin.destroy();
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
         resolve();
-      }, 40);
+      };
 
+      const timeout = setTimeout(() => {
+        // Gentle close — avoid EPIPE in parent (Claude Code)
+        process.stdin.pause();
+        done();
+      }, 100);
+
+      // Attach handlers BEFORE resume to avoid missing early data
       process.stdin.on("data", (chunk) => chunks.push(chunk));
-      process.stdin.on("end", () => { clearTimeout(timeout); resolve(); });
-      process.stdin.on("error", () => { clearTimeout(timeout); resolve(); });
+      process.stdin.on("end", done);
+      process.stdin.on("error", done);
       process.stdin.resume();
     });
 
@@ -127,6 +139,8 @@ export async function hookEventCommand(): Promise<void> {
   const summary = buildSummary(toolName, toolInput, input.tool_result);
 
   const client = new SocketClient();
+  // Tight timeout: we have ~700ms left of our 800ms budget.
+  // If daemon is unreachable, bail fast.
   await client.sendAndClose({
     type: "hook_event",
     tool: toolName,
@@ -135,5 +149,5 @@ export async function hookEventCommand(): Promise<void> {
     context,
     summary,
     timestamp: Date.now(),
-  });
+  }, 300);
 }

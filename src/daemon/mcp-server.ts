@@ -11,6 +11,9 @@ import type { Species } from "../pet/species.js";
  * MCP server bridge for Claude Code integration.
  * Spawned by Claude Code as a stdio process.
  * Connects to the daemon's unix socket for live state.
+ *
+ * CRITICAL: This process runs on Claude Code's critical path.
+ * All operations must be non-blocking with bounded timeouts.
  */
 export async function runMcpServer(): Promise<void> {
   const server = new McpServer({
@@ -18,10 +21,23 @@ export async function runMcpServer(): Promise<void> {
     version: "0.1.0",
   });
 
-  // Try to connect to daemon for live data
+  // Daemon connection state — connected lazily, not at startup
   let daemonClient: SocketClient | null = null;
   let lastState: Record<string, unknown> | null = null;
   let lastPersonality: Record<string, unknown> | null = null;
+
+  // Cached disk state — loaded once, refreshed from daemon messages
+  let cachedDiskState: ReturnType<typeof loadGlobalState> | undefined;
+  function getCachedState() {
+    if (cachedDiskState === undefined) {
+      try {
+        cachedDiskState = loadGlobalState();
+      } catch {
+        cachedDiskState = null;
+      }
+    }
+    return cachedDiskState;
+  }
 
   async function connectToDaemon(): Promise<void> {
     try {
@@ -41,7 +57,34 @@ export async function runMcpServer(): Promise<void> {
     }
   }
 
-  await connectToDaemon();
+  // Connect to daemon in background — don't block MCP server startup.
+  // Tools have disk-state fallback, so this is safe.
+  connectToDaemon().catch(() => { /* already handled inside */ });
+
+  /**
+   * Request personality from daemon and wait for response.
+   * Returns the personality data or null if daemon is unavailable/slow.
+   */
+  function requestPersonality(): Promise<Record<string, unknown> | null> {
+    if (!daemonClient) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      lastPersonality = null;
+      daemonClient!.send({ type: "get_personality" });
+
+      // Check frequently, bail after 150ms
+      let elapsed = 0;
+      const interval = setInterval(() => {
+        elapsed += 20;
+        if (lastPersonality) {
+          clearInterval(interval);
+          resolve(lastPersonality);
+        } else if (elapsed >= 150) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 20);
+    });
+  }
 
   // --- buddy_chat tool ---
   server.tool(
@@ -52,16 +95,11 @@ export async function runMcpServer(): Promise<void> {
       context: z.string().optional().describe("Brief 1-2 sentence summary of what the user is currently working on"),
     },
     async ({ message, context }) => {
-      // Request personality data from daemon
-      if (daemonClient) {
-        lastPersonality = null;
-        daemonClient.send({ type: "get_personality" });
-        // Wait briefly for response
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      // Request personality data from daemon (bounded wait)
+      const personality = await requestPersonality();
 
-      // Build response from daemon data or disk fallback
-      const state = loadGlobalState();
+      // Build response from daemon data or cached disk fallback
+      const state = getCachedState();
       if (!state) {
         return {
           content: [{
@@ -76,8 +114,8 @@ export async function runMcpServer(): Promise<void> {
       const recentActivity: string[] = [];
       const recentPatterns: string[] = [];
 
-      if (lastPersonality) {
-        const p = lastPersonality as Record<string, unknown>;
+      if (personality) {
+        const p = personality;
         if (Array.isArray(p.recentPatterns)) {
           recentActivity.push(...(p.recentPatterns as string[]));
         }
@@ -89,12 +127,12 @@ export async function runMcpServer(): Promise<void> {
         }
       }
 
-      const personality = buildPersonalityContext(state, recentActivity, recentPatterns);
+      const personalityCtx = buildPersonalityContext(state, recentActivity, recentPatterns);
 
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(personality, null, 2),
+          text: JSON.stringify(personalityCtx, null, 2),
         }],
       };
     },
@@ -106,7 +144,7 @@ export async function runMcpServer(): Promise<void> {
     "Get the current status of your coding buddy (name, species, mood, level, traits).",
     {},
     async () => {
-      const state = loadGlobalState();
+      const state = getCachedState();
       if (!state) {
         return {
           content: [{
@@ -142,7 +180,7 @@ export async function runMcpServer(): Promise<void> {
       if (daemonClient) {
         daemonClient.send({ type: "feed" });
       }
-      const state = loadGlobalState();
+      const state = getCachedState();
       const name = state?.name ?? "your buddy";
       return {
         content: [{
@@ -153,7 +191,7 @@ export async function runMcpServer(): Promise<void> {
     },
   );
 
-  // Start stdio transport
+  // Start stdio transport — this must happen ASAP so Claude Code doesn't think we're dead
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // MCP server runs until Claude Code closes the connection
