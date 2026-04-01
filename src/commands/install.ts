@@ -160,6 +160,34 @@ export async function installCommand(opts: { yes?: boolean }): Promise<void> {
     console.log("  Buddy already exists.\n");
   }
 
+  // Auto-start daemon if not already running
+  console.log("  Starting daemon...");
+  try {
+    const { BUDDY_SOCKET_PATH } = await import("../utils.js");
+    const net = await import("node:net");
+    const alreadyRunning = await new Promise<boolean>((res) => {
+      const sock = net.createConnection(BUDDY_SOCKET_PATH, () => { sock.destroy(); res(true); });
+      sock.on("error", () => res(false));
+      setTimeout(() => { sock.destroy(); res(false); }, 500);
+    });
+
+    if (alreadyRunning) {
+      console.log("    ✓ Daemon already running");
+    } else {
+      const { spawn } = await import("node:child_process");
+      const buddyBin = resolveBuddyCommand();
+      if (buddyBin.command === "claude-buddy") {
+        spawn("claude-buddy", ["daemon", "run"], { detached: true, stdio: "ignore" }).unref();
+      } else {
+        spawn("npx", ["tsx", resolve(process.argv[1]), "daemon", "run"], { detached: true, stdio: "ignore" }).unref();
+      }
+      console.log("    ✓ Daemon started in background");
+    }
+  } catch {
+    console.log("    - Could not start daemon (run `claude-buddy daemon run` manually)");
+  }
+  console.log("");
+
   console.log("  Installation complete!");
   console.log("  Your buddy is now integrated with Claude Code.");
   if (tmuxOk) {

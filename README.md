@@ -22,25 +22,25 @@ Your buddy watches every Claude Code tool call via a PostToolUse hook and reacts
 - **Narrates the action** in a speech bubble with personality ("Snooping around state.ts", "SHELL GO BRRRR!", "Investigating handleAuth -- smart approach")
 - **Tracks patterns** across your session (file revisits, error streaks, rapid bursts, context switching)
 - **Evolves traits** from your coding habits (Adventurous, Night Owl, Speed Demon)
-- **Speaks in-character via MCP** -- say "hey buddy" in Claude Code and Claude responds as your pet
 - **Multi-color sprites** with per-pet color palettes, 7 animation states, micro-animations
 
 ## Quick Start
 
 ```bash
 git clone <repo-url> && cd buddy
-npm install
-npm run build
-npm link
+npm install          # auto-builds
+npm run setup        # registers with Claude Code, hatches pet, starts daemon
+```
 
-# Register MCP server + hook with Claude Code
-claude-buddy install
+Then open the live side pane:
 
-# Open the live side pane
+```bash
+npx tsx src/index.ts pane
+# or, if you've run `npm link`:
 claude-buddy pane
 ```
 
-The pane is a passive display -- it won't interfere with your terminal. It auto-starts the daemon and shows your buddy reacting to Claude's activity in real time.
+The pane is a passive display -- it won't interfere with your terminal. It shows your buddy reacting to Claude's activity in real time.
 
 ## Requirements
 
@@ -59,6 +59,7 @@ The pane is a passive display -- it won't interfere with your terminal. It auto-
 | `claude-buddy feed` | Feed your buddy (triggers reaction in pane) |
 | `claude-buddy pet` | Pet your buddy |
 | `claude-buddy install` | Register MCP + hook with Claude Code |
+| `claude-buddy card` | Generate a shareable pet card (`--copy`, `--raw`) |
 | `claude-buddy demo` | 30-second demo sequence |
 | `claude-buddy daemon run` | Run daemon in foreground |
 | `claude-buddy daemon stop` | Stop daemon |
@@ -126,24 +127,9 @@ Your pet's highest stat determines its voice. High-snark pets are sassy, high-wi
 
 ## MCP Integration
 
-Say **"hey buddy"** in Claude Code. Claude calls `buddy_chat`, gets your pet's full personality context, and responds in-character:
-
-```json
-{
-  "name": "Professor Chip",
-  "species": "Robot",
-  "stats": { "snark": 16, "wisdom": 16, "chaos": 16 },
-  "mood": "focused",
-  "recentActivity": ["Edit state.ts", "Bash npm test"],
-  "responseGuidance": "Snark 16/20 = quite sassy. Chaos 16/20 = excitable. You are a robot."
-}
-```
-
-### MCP Tools
-
 | Tool | Purpose |
 |------|---------|
-| `buddy_chat` | Personality context -- Claude responds as the buddy |
+| `buddy_chat` | Personality context for the pet |
 | `buddy_status` | Quick status (name, mood, level) |
 | `buddy_feed` | Feed the buddy |
 
@@ -217,7 +203,6 @@ The MCP server and hook are fresh processes per invocation, so they pick up chan
 - **More species** -- Duck, Penguin, Axolotl, Dragon, Capybara
 - **More traits** -- Scholar, Architect, Debugger, Chaos Gremlin (with 3 levels each)
 - **Shiny variants** -- 1% sparkle overlay
-- **Cross-session memory** -- "Welcome back! Last time you were deep in auth/"
 - **API-powered reactions** -- LLM-generated commentary for notable patterns
 - **Pane chat** -- Talk to your buddy from the side pane
 

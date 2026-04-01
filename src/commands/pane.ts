@@ -67,7 +67,11 @@ export async function paneCommand(opts: { render?: boolean }): Promise<void> {
   if (!isDaemonRunning()) {
     console.log("  Starting daemon...");
     ensureDaemon();
-    await new Promise((r) => setTimeout(r, 1500));
+    // Poll for socket readiness instead of hard sleep
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      if (isDaemonRunning()) break;
+    }
   }
 
   const renderCmd = "claude-buddy pane --render";

@@ -63,7 +63,9 @@ export class SocketServer {
     const line = JSON.stringify(msg) + "\n";
     for (const client of this.clients) {
       try {
-        client.write(line);
+        if (!client.destroyed && client.writable) {
+          client.write(line);
+        }
       } catch {
         // Client disconnected, will be cleaned up on close event
       }
@@ -81,22 +83,33 @@ export class SocketServer {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(forceTimeout);
+        // Clean up socket file
+        try {
+          if (existsSync(BUDDY_SOCKET_PATH)) {
+            unlinkSync(BUDDY_SOCKET_PATH);
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
+        resolve();
+      };
+
+      // Force-resolve after 3s if server.close() hangs waiting for connections
+      const forceTimeout = setTimeout(finish, 3000);
+
       for (const client of this.clients) {
         client.destroy();
       }
       this.clients.clear();
       if (this.server) {
-        this.server.close(() => resolve());
+        this.server.close(() => finish());
       } else {
-        resolve();
-      }
-      // Clean up socket file
-      try {
-        if (existsSync(BUDDY_SOCKET_PATH)) {
-          unlinkSync(BUDDY_SOCKET_PATH);
-        }
-      } catch {
-        // Ignore cleanup errors
+        finish();
       }
     });
   }

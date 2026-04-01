@@ -10,10 +10,11 @@ interface SpriteProps {
   animation: string;
   tick: number;
   palette: PetPalette;
+  level?: number;
 }
 
-export function Sprite({ species, animation, tick, palette }: SpriteProps) {
-  const frame = getFrame(species, animation, tick);
+export function Sprite({ species, animation, tick, palette, level }: SpriteProps) {
+  const frame = getFrame(species, animation, tick, level);
 
   return (
     <Box flexDirection="column" alignItems="center">

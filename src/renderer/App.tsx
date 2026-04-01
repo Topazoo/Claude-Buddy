@@ -2,6 +2,7 @@ import React, { useReducer, useEffect, useRef, useCallback } from "react";
 import { Box, Text } from "ink";
 import { SpeechBubble } from "./SpeechBubble.js";
 import { Sprite } from "./Sprite.js";
+import { Particles, tickParticles, spawnSparkles, spawnErrorRain, type Particle } from "./Particles.js";
 import { PetInfo } from "./PetInfo.js";
 import { StatsBar } from "./StatsBar.js";
 import { ActivityLog } from "./ActivityLog.js";
@@ -27,6 +28,7 @@ interface AppState {
   tick: number;
   recentEvents: RecentEvent[];
   connected: boolean;
+  particles: Particle[];
 }
 
 type Action =
@@ -35,7 +37,8 @@ type Action =
   | { type: "TICK" }
   | { type: "SET_CONNECTED"; connected: boolean }
   | { type: "STATE_UPDATE"; state: PetState }
-  | { type: "TOOL_EVENT"; event: RecentEvent };
+  | { type: "TOOL_EVENT"; event: RecentEvent }
+  | { type: "SPAWN_PARTICLES"; particles: Particle[] };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -52,13 +55,15 @@ function reducer(state: AppState, action: Action): AppState {
       }
       return state;
     case "TICK":
-      return { ...state, tick: state.tick + 1 };
+      return { ...state, tick: state.tick + 1, particles: tickParticles(state.particles) };
     case "SET_CONNECTED":
       return { ...state, connected: action.connected };
     case "STATE_UPDATE":
       return { ...state, pet: action.state };
     case "TOOL_EVENT":
       return { ...state, recentEvents: [...state.recentEvents.slice(-5), action.event] };
+    case "SPAWN_PARTICLES":
+      return { ...state, particles: [...state.particles, ...action.particles] };
     default:
       return state;
   }
@@ -80,6 +85,7 @@ export function App({ demo }: AppProps) {
     tick: 0,
     recentEvents: [],
     connected: false,
+    particles: [],
   });
 
   const handleMessage = useCallback((msg: Record<string, unknown>) => {
@@ -89,22 +95,33 @@ export function App({ demo }: AppProps) {
         text: msg.text as string,
         animation: msg.animation as string,
       });
+      if (msg.animation === "startled") {
+        dispatch({ type: "SPAWN_PARTICLES", particles: spawnErrorRain() });
+      }
     } else if (msg.type === "state_update" && msg.state) {
       dispatch({ type: "STATE_UPDATE", state: msg.state as PetState });
     } else if (msg.type === "tool_event") {
       dispatch({
         type: "TOOL_EVENT",
         event: {
-          summary: msg.summary as string,
+          summary: (msg.summary as string) ?? (msg.detail as string) ?? String(msg.tool ?? "event"),
           timestamp: msg.timestamp as number,
         },
       });
     } else if (msg.type === "trait_unlock") {
       dispatch({
         type: "REACTION",
-        text: `New trait: ${msg.trait}!`,
+        text: `New trait: \x01${msg.trait}\x02!`,
         animation: "excited",
       });
+      dispatch({ type: "SPAWN_PARTICLES", particles: spawnSparkles() });
+    } else if (msg.type === "level_up") {
+      dispatch({
+        type: "REACTION",
+        text: `Level up! \x01Lv.${msg.level}\x02`,
+        animation: "excited",
+      });
+      dispatch({ type: "SPAWN_PARTICLES", particles: spawnSparkles() });
     }
   }, []);
 
@@ -161,12 +178,14 @@ export function App({ demo }: AppProps) {
 
   return (
     <Box flexDirection="column" padding={1}>
-      <SpeechBubble text={state.speechText} />
+      <SpeechBubble text={state.speechText} tick={state.tick} />
+      <Particles particles={state.particles} />
       <Sprite
         species={species}
         animation={state.animation}
         tick={state.tick}
         palette={palette}
+        level={level}
       />
       <Text> </Text>
       <PetInfo
@@ -220,7 +239,7 @@ export function App({ demo }: AppProps) {
         )}
         {state.recentEvents.slice(-3).map((ev, i) => (
           <Text key={i} dimColor>
-            {"  \u25B8"} {ev.summary.slice(0, 30)}
+            {"  \u25B8"} {(ev.summary ?? "").slice(0, 30)}
           </Text>
         ))}
       </Box>
