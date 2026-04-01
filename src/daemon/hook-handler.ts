@@ -96,6 +96,9 @@ function extractContext(toolName: string, toolInput: Record<string, unknown>): R
 }
 
 export async function hookEventCommand(): Promise<void> {
+  const deadline = setTimeout(() => process.exit(0), 1000);
+  deadline.unref();
+
   let input: HookInput;
   try {
     const chunks: Buffer[] = [];

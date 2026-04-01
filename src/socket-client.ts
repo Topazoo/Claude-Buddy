@@ -16,7 +16,15 @@ export class SocketClient {
   connect(onMessage?: ClientMessageHandler): Promise<void> {
     this.handler = onMessage ?? null;
     return new Promise((resolve, reject) => {
-      this.socket = createConnection(BUDDY_SOCKET_PATH, () => resolve());
+      this.socket = createConnection(BUDDY_SOCKET_PATH, () => {
+        clearTimeout(deadline);
+        resolve();
+      });
+
+      const deadline = setTimeout(() => {
+        this.socket?.destroy();
+        reject(new Error("Connection timeout"));
+      }, 2000);
 
       this.socket.on("data", (chunk) => {
         if (!this.handler) return;
@@ -33,27 +41,42 @@ export class SocketClient {
         }
       });
 
-      this.socket.on("error", reject);
+      this.socket.on("error", (err) => {
+        clearTimeout(deadline);
+        reject(err);
+      });
     });
   }
 
   /** Send a message to the daemon. */
   send(msg: Record<string, unknown>): void {
-    if (this.socket) {
-      this.socket.write(JSON.stringify(msg) + "\n");
+    try {
+      if (this.socket && !this.socket.destroyed) {
+        this.socket.write(JSON.stringify(msg) + "\n");
+      }
+    } catch {
+      // Socket dead, ignore
     }
   }
 
   /** Send and immediately disconnect. For fire-and-forget (hook events). */
   sendAndClose(msg: Record<string, unknown>): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const socket = createConnection(BUDDY_SOCKET_PATH, () => {
         socket.write(JSON.stringify(msg) + "\n", () => {
           socket.end();
+          clearTimeout(deadline);
           resolve();
         });
       });
-      socket.on("error", () => resolve()); // Silent failure for hooks
+      const deadline = setTimeout(() => {
+        socket.destroy();
+        resolve();
+      }, 500);
+      socket.on("error", () => {
+        clearTimeout(deadline);
+        resolve();
+      });
     });
   }
 
