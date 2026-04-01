@@ -3,40 +3,39 @@
 A Tamagotchi-style terminal companion for [Claude Code](https://claude.ai/code). Your buddy lives in your terminal, watches what Claude is doing in real time, narrates the action with personality, and evolves from your coding patterns.
 
 ```
-┌──────────────────────────────┐
-│ Snooping around state.ts     │
-└──────────────────────────────┘
-       ▄●▄
-     ▄█████▄        Professor Chip 🤖 Lv.2
-     █ ■  ■ █       Military Robot (Rare)
-     █ ▀══▀ █       Mood: focused :|
-     ▀█████▀
-     █▌▐██▌▐█       XP ██████████░░░░░ 89
-     █▀    ▀█       B:30 E:24 W:11 R:15 S:12
+┌────────────────────────────────────────────────────┐
+│ Returning to state.ts -- persistent debugging?     │
+└────────────────────────────────────────────────────┘
+ ╭──────────────────╮
+ │      ☆●☆         │  ── Stats ──────────────
+ │    ▄█████▄       │  DBG █░░░░░░░░ 2
+ │    █ ◈  ◈ █      │  PAT ██░░░░░░░ 4
+ │    █ ▀══▀ █      │  CHS ████████░ 16
+ │    ▀█████▀       │  WIS ████████░ 16
+ │    █▌▐██▌▐█      │  SNK ████████░ 16
+ │    █▀    ▀█      │
+ ╰──────────────────╯  ── Tools ──────────────
+ Professor Chip         Bash   300  Read    482
+ Lv.5 excited           Edit   150  Search  146
+ XP ████░░░░░░          Write   46  Fetch     2
+
+ Traits                 ── Recent ─────────────
+  Adventurous Lv.1      ▸ Editing App.tsx
+  "Let's see what       ▸ Ran `npm run build`
+   happens!"            ▸ Reading state.ts
 ```
-
-## How It Works
-
-Your buddy watches every Claude Code tool call via a PostToolUse hook and reacts in real time:
-
-- **Narrates the action** in a speech bubble with personality ("Snooping around state.ts", "SHELL GO BRRRR!", "Investigating handleAuth -- smart approach")
-- **Tracks patterns** across your session (file revisits, error streaks, rapid bursts, context switching)
-- **Evolves traits** from your coding habits (Adventurous, Night Owl, Speed Demon)
-- **Multi-color sprites** with per-pet color palettes, 7 animation states, micro-animations
 
 ## Quick Start
 
 ```bash
 git clone <repo-url> && cd buddy
-npm install          # auto-builds
+npm install          # auto-builds via postinstall
 npm run setup        # registers with Claude Code, hatches pet, starts daemon
 ```
 
 Then open the live side pane:
 
 ```bash
-npx tsx src/index.ts pane
-# or, if you've run `npm link`:
 claude-buddy pane
 ```
 
@@ -46,7 +45,7 @@ The pane is a passive display -- it won't interfere with your terminal. It shows
 
 - **Node.js 20+**
 - **Claude Code** (the `claude` CLI)
-- **tmux** (optional, for the side pane -- everything else works without it)
+- **tmux** (for the side pane -- everything else works without it)
 
 ## Commands
 
@@ -56,10 +55,10 @@ The pane is a passive display -- it won't interfere with your terminal. It shows
 | `claude-buddy hatch` | Hatch a new buddy (species roll + name) |
 | `claude-buddy stats` | Full stats, sprite, traits, counters |
 | `claude-buddy pane` | Open tmux side pane (auto-starts daemon) |
+| `claude-buddy card` | Generate a shareable pet card (`--copy`, `--raw`) |
 | `claude-buddy feed` | Feed your buddy (triggers reaction in pane) |
 | `claude-buddy pet` | Pet your buddy |
 | `claude-buddy install` | Register MCP + hook with Claude Code |
-| `claude-buddy card` | Generate a shareable pet card (`--copy`, `--raw`) |
 | `claude-buddy demo` | 30-second demo sequence |
 | `claude-buddy daemon run` | Run daemon in foreground |
 | `claude-buddy daemon stop` | Stop daemon |
@@ -67,16 +66,20 @@ The pane is a passive display -- it won't interfere with your terminal. It shows
 
 ## The Pane
 
-The tmux pane shows a live view of your buddy:
+The tmux pane shows a two-column live view of your buddy:
 
-- **Sprite** with multi-color rendering (7 animation states: idle, startled, excited, sleeping, thinking, confused, eating)
-- **Speech bubble** narrating what Claude is doing, flavored by your pet's personality
-- **Stats** (Debugging, Patience, Chaos, Wisdom, Snark)
-- **XP bar** that fills as you code
-- **Tool counters** (Bash, Edit, Write, Read, Search, Fetch)
-- **Recent feed** of the last 3 tool calls
+**Left column:**
+- **Sprite** in a bordered frame with multi-color rendering, 7 animation states, and micro-animations
+- **Particle effects** -- sparkles on level-up/trait unlock, error rain on error streaks
+- **Pet info** -- name, level, mood, XP bar
+- **Traits** with flavor text
 
-The pane is fully passive -- no keyboard input needed. Interact via CLI commands from your main terminal.
+**Right column:**
+- **Stats** (Debugging, Patience, Chaos, Wisdom, Snark) with bar charts
+- **Tool counters** in a two-column grid (Bash, Edit, Write, Read, Search, Fetch)
+- **Recent events** with horizontal scrolling for long entries
+
+**Speech bubble** spans the top with scrolling marquee for long text and highlighted dynamic values (filenames, commands, queries shown in yellow).
 
 ## Species & Palettes
 
@@ -90,6 +93,16 @@ Species is determined by seeded PRNG (username + hostname). Each species has mul
 | 🤖 Robot | Rare | 8% | Cyan Chrome, Gold Plated, Gunmetal, Rust, Military |
 | 🦎 Reptile | Epic | 5% | Emerald, Desert, Poison, Dragon |
 | 👻 Ghost | Legendary | 2% | Lavender, Crimson, Ethereal, Void, Jade |
+
+## Evolution
+
+Sprites gain visual decorations as your pet levels up:
+
+| Level | Evolution | Effect |
+|-------|-----------|--------|
+| 5 | **Crown** | Species-appropriate headgear (crown, crest, halo, etc.) |
+| 10 | **Sparkle Eyes** | Eyes become ★ or ◈ |
+| 15 | **Aura** | Glowing ░ effects on body edges |
 
 ## Personality
 
@@ -109,9 +122,26 @@ Your pet's highest stat determines its voice. High-snark pets are sassy, high-wi
 
 | Trait | Threshold | Effect |
 |-------|-----------|--------|
-| **Adventurous** | 200 bash calls | Shell command excitement |
-| **Night Owl** | 10 midnight sessions | Time-aware personality |
-| **Speed Demon** | 20 rapid edit bursts | Fast coding reactions |
+| **Adventurous** | 200 bash calls | "Let's see what happens!" |
+| **Night Owl** | 10 midnight sessions | Sleepy days, alert nights |
+| **Speed Demon** | 20 rapid edit bursts | "Zoom zoom!" |
+
+### Reactions
+
+The buddy reacts to tool calls with personality-flavored speech. Reactions are rate-limited to one every 15 seconds to avoid spam.
+
+**Git-specific reactions** (50% chance):
+- `git commit` → "Committing! Bold move." / "COMMIT COMMIT COMMIT!"
+- `git push --force` → "Force push?! Living dangerously."
+- `git rebase` → "Rewriting history, are we?"
+
+**Tool command reactions** (40% chance):
+- `npm install` → "node_modules grows ever larger."
+- `npm test` → "Let's see how many break."
+- `docker build` → "CONTAINERS GO BRRRR!"
+
+**Idle chatter** (after 5min of inactivity):
+- "hello?", "anyone there?", "*yawns*", "zzz..."
 
 ### Pattern Detection
 
@@ -124,6 +154,16 @@ Your pet's highest stat determines its voice. High-snark pets are sassy, high-wi
 | Context switching | 6+ files in 5 min | "Jumping around a lot -- exploring?" |
 | New territory | Unvisited directory | "Venturing into {dir}/" |
 | Return from idle | 10+ min gap | "Oh, you're back!" |
+
+## Pet Card
+
+Generate a shareable ASCII art card with your pet's sprite, stats, and traits:
+
+```bash
+claude-buddy card          # ANSI-colored output
+claude-buddy card --raw    # Plain text (no colors)
+claude-buddy card --copy   # Copy to clipboard
+```
 
 ## MCP Integration
 
@@ -143,12 +183,16 @@ Claude Code
 Daemon (claude-buddy daemon run)
   ├─ Socket server (NDJSON over ~/.claude-buddy/buddy.sock)
   ├─ Pattern tracker (file visits, error streaks, bursts)
-  ├─ Personality narrator (stats-flavored commentary)
-  ├─ Ticker (60s: mood derivation, trait checks, state persistence)
+  ├─ Reaction engine (git/tool/pattern reactions, rate-limited)
+  ├─ Idle chatter (bored/sleepy after 5min inactivity)
+  ├─ Ticker (60s: mood derivation, trait checks, level-up detection)
   └─ Atomic state writer (state.json)
 
 Tmux Pane (claude-buddy pane)
-  └─ Ink renderer ──→ passive display from daemon socket
+  └─ Ink renderer ──→ two-column display from daemon socket
+       ├─ Sprite with evolution decorations + particle effects
+       ├─ Scrolling speech bubble with highlighted values
+       └─ Scrolling recent events
 ```
 
 ### Data
@@ -171,9 +215,6 @@ npx tsx src/index.ts daemon run
 npm run build          # ~15ms via tsup
 npm link               # Global `claude-buddy` command
 
-# Register with Claude Code
-claude-buddy install
-
 # Type check
 npm run typecheck
 ```
@@ -186,16 +227,7 @@ pkill -f "claude-buddy.*daemon"  # Restart daemon (picks up new build)
 claude-buddy daemon run &        # Start fresh daemon
 ```
 
-The MCP server and hook are fresh processes per invocation, so they pick up changes automatically. Only the daemon needs a restart.
-
-## Design Decisions
-
-- **Pane is passive.** No keyboard input capture -- won't interfere with your terminal. Interact via CLI (`feed`, `pet`).
-- **Mood is activity-derived.** No manual feeding required. Coding = happy pet. Errors = confused. Idle = sleepy.
-- **Personality narrates everything.** Every tool call gets a speech bubble flavored by the pet's stats. Pattern reactions add extra commentary.
-- **Multi-color sprites.** Per-character color tokens (body, eyes, accent, highlight) mapped to per-pet palettes. Two cats look different.
-- **Hook gets rich stdin data.** PostToolUse hooks receive `{ tool_name, tool_input, tool_result }` -- the hook builds human-readable summaries from real context.
-- **Seeded PRNG.** Same user gets same species/stats/palette. Deterministic but feels personal.
+The MCP server and hook are fresh processes per invocation, so they pick up changes automatically. Only the daemon and pane need a restart.
 
 ## Roadmap
 
