@@ -353,6 +353,8 @@ export async function runDaemon(): Promise<void> {
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  // Ignore SIGHUP so daemon survives terminal close (VSCode, tmux detach, etc.)
+  process.on("SIGHUP", () => {});
 
   log("Daemon running. Press Ctrl+C to stop.");
 }

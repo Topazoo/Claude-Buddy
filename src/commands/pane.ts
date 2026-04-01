@@ -41,9 +41,11 @@ function ensureDaemon(): void {
   if (isDaemonRunning()) return;
   mkdirSync(BUDDY_HOME, { recursive: true });
   const logFd = openSync(BUDDY_LOG_PATH, "a");
-  const child = spawn("claude-buddy", ["daemon", "run"], {
+  // Use nohup + setsid to fully detach from the terminal session,
+  // preventing VSCode's integrated terminal from killing the daemon on close
+  const child = spawn("nohup", ["claude-buddy", "daemon", "run"], {
     detached: true,
-    stdio: ["ignore", "ignore", logFd],
+    stdio: ["ignore", logFd, logFd],
   });
   child.unref();
 }

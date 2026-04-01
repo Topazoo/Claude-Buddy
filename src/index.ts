@@ -16,6 +16,7 @@ program
   .command("hatch")
   .description("Hatch a new buddy")
   .option("--yes", "Skip all prompts")
+  .option("--seed <seed>", "Reroll with a custom seed for a different buddy")
   .action(async (opts) => {
     await hatchCommand(opts);
   });
