@@ -33,23 +33,29 @@ function renderSprite(species: Species, state: string, palette: import("../pet/p
   }
 }
 
-export async function hatchCommand(opts: { yes?: boolean }): Promise<void> {
+export async function hatchCommand(opts: { yes?: boolean; seed?: string }): Promise<void> {
   const existing = loadGlobalState();
   if (existing) {
     console.log(`\nYou already have a buddy: ${existing.name} the ${SPECIES[existing.species].name}`);
     const answer = opts.yes ? "y" : await prompt("Re-hatch? This replaces your current pet. (y/N) ");
     if (answer.toLowerCase() !== "y") {
       console.log("Keeping your current buddy.");
+      console.log('Tip: Use --seed <word> to reroll a different species (e.g. claude-buddy hatch --seed lucky)');
       return;
     }
     console.log(`\nFarewell, ${existing.name}...\n`);
   }
 
-  // Seed from username + hostname for deterministic-feeling first hatch
-  const seed = djb2(userInfo().username + hostname());
+  // Seed from username + hostname, mixed with optional user seed for rerolling
+  const baseSeed = userInfo().username + hostname();
+  const seed = djb2(opts.seed ? baseSeed + ":" + opts.seed : baseSeed);
   const random = mulberry32(seed);
 
-  console.log("\n  Hatching your buddy...\n");
+  if (opts.seed) {
+    console.log(`\n  Hatching your buddy with seed "${opts.seed}"...\n`);
+  } else {
+    console.log("\n  Hatching your buddy...\n");
+  }
   await sleep(800);
 
   // Roll species with dramatic reveal
