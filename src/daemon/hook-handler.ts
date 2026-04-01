@@ -1,11 +1,35 @@
 import { basename } from "node:path";
 import { SocketClient } from "../socket-client.js";
+import { buddyLog } from "../utils.js";
 
 /**
  * PostToolUse hook handler.
  * Reads JSON from stdin, builds a human-readable summary, fires to daemon.
  * Must complete in <50ms. Silent on failure.
  */
+
+/** Redact likely secrets from command strings before logging/broadcasting. */
+const SECRET_PATTERNS = [
+  /Bearer\s+[^\s"']+/gi,
+  /Authorization:\s*[^\s"']+/gi,
+  /(?:API_KEY|SECRET|PASSWORD|PRIVATE_KEY|TOKEN|AWS_SECRET_ACCESS_KEY|DATABASE_URL)=[^\s"']+/gi,
+  /(?:sk-|ghp_|gho_|glpat-|xoxb-|xoxp-)[A-Za-z0-9_-]+/g,
+];
+function sanitizeCommand(cmd: string): string {
+  let result = cmd;
+  for (const pattern of SECRET_PATTERNS) {
+    result = result.replace(pattern, (match) => {
+      const eqIdx = match.indexOf("=");
+      const spaceIdx = match.indexOf(" ");
+      const splitIdx = [eqIdx, spaceIdx].filter((i) => i >= 0).sort((a, b) => a - b)[0];
+      if (splitIdx !== undefined) {
+        return match.slice(0, splitIdx + 1) + "***";
+      }
+      return "***";
+    });
+  }
+  return result;
+}
 
 interface HookInput {
   session_id?: string;
@@ -24,7 +48,7 @@ function buildSummary(toolName: string, input: Record<string, unknown>, result: 
 
   switch (toolName) {
     case "Bash": {
-      const cmd = String(input.command ?? "").trim();
+      const cmd = sanitizeCommand(String(input.command ?? "").trim());
       const shortCmd = cmd.length > 50 ? cmd.slice(0, 50) + "..." : cmd;
       if (isError) return `Ran \`${shortCmd}\` (failed)`;
       return `Ran \`${shortCmd}\``;
@@ -74,7 +98,7 @@ function extractContext(toolName: string, toolInput: Record<string, unknown>): R
   const ctx: Record<string, unknown> = {};
   switch (toolName) {
     case "Bash":
-      if (toolInput.command) ctx.command = String(toolInput.command).slice(0, 200);
+      if (toolInput.command) ctx.command = sanitizeCommand(String(toolInput.command)).slice(0, 200);
       break;
     case "Read":
     case "Write":
@@ -98,7 +122,10 @@ function extractContext(toolName: string, toolInput: Record<string, unknown>): R
 export async function hookEventCommand(): Promise<void> {
   // Hard deadline: if anything goes wrong, exit cleanly so we never block Claude Code.
   // .unref() so this timer alone won't keep the process alive (allows fast natural exit).
-  const deadline = setTimeout(() => process.exit(0), 800);
+  const deadline = setTimeout(() => {
+    buddyLog("hook", "Deadline reached — forcing exit");
+    process.exit(0);
+  }, 800);
   deadline.unref();
 
   let input: HookInput;
@@ -129,7 +156,8 @@ export async function hookEventCommand(): Promise<void> {
     const raw = Buffer.concat(chunks).toString("utf-8").trim();
     if (!raw) return;
     input = JSON.parse(raw);
-  } catch {
+  } catch (err) {
+    buddyLog("hook", `Failed to parse stdin: ${err instanceof Error ? err.message : err}`);
     return;
   }
 
@@ -141,7 +169,7 @@ export async function hookEventCommand(): Promise<void> {
   const client = new SocketClient();
   // Tight timeout: we have ~700ms left of our 800ms budget.
   // If daemon is unreachable, bail fast.
-  await client.sendAndClose({
+  const ok = await client.sendAndClose({
     type: "hook_event",
     tool: toolName,
     cwd: input.cwd,
@@ -150,4 +178,7 @@ export async function hookEventCommand(): Promise<void> {
     summary,
     timestamp: Date.now(),
   }, 300);
+  if (!ok) {
+    buddyLog("hook", `Failed to send event (${toolName}) — daemon unreachable or timeout`);
+  }
 }

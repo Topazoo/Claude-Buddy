@@ -1,6 +1,6 @@
 import { execSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { BUDDY_SOCKET_PATH, BUDDY_LOG_PATH } from "../utils.js";
+import { existsSync, openSync, readFileSync } from "node:fs";
+import { BUDDY_SOCKET_PATH, BUDDY_LOG_PATH, BUDDY_HOME } from "../utils.js";
 
 function isDaemonRunning(): boolean {
   return existsSync(BUDDY_SOCKET_PATH);
@@ -21,12 +21,16 @@ export async function daemonCommand(subcommand: string): Promise<void> {
         return;
       }
       // Start daemon as a detached background process
+      // Redirect stderr to log file so uncaught exceptions are captured
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(BUDDY_HOME, { recursive: true });
+      const logFd = openSync(BUDDY_LOG_PATH, "a");
       const child = spawn(process.execPath, [
         "--import", "tsx",
         new URL("../daemon/main.js", import.meta.url).pathname.replace(/\.js$/, ".ts"),
       ], {
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", logFd],
         env: { ...process.env },
       });
       child.unref();

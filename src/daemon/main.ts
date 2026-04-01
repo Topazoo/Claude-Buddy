@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync, readFileSync } from "node:fs";
 import type { Socket } from "node:net";
 import { basename } from "node:path";
-import { BUDDY_HOME, BUDDY_GLOBAL_DIR, CLAUDE_HOME } from "../utils.js";
+import { BUDDY_HOME, BUDDY_GLOBAL_DIR, BUDDY_LOG_PATH, CLAUDE_HOME, buddyLog } from "../utils.js";
 import { loadGlobalState, saveGlobalState } from "../persistence.js";
 import type { PetState } from "../pet/state.js";
 import type { SessionActivity } from "../pet/state.js";
@@ -46,8 +46,7 @@ function narrateSummary(summary: string, tool: string, stats: Stats, random: () 
 }
 
 function log(msg: string): void {
-  const ts = new Date().toISOString();
-  console.error(`[${ts}] ${msg}`);
+  buddyLog("daemon", msg);
 }
 
 /**
@@ -69,6 +68,21 @@ function toolToCounter(tool: string): keyof PetState["activityCounters"] | null 
 
 export async function runDaemon(): Promise<void> {
   log("Starting claude-buddy daemon...");
+
+  // Rotate log if it exceeds 1MB
+  try {
+    if (existsSync(BUDDY_LOG_PATH)) {
+      const size = statSync(BUDDY_LOG_PATH).size;
+      if (size > 1_000_000) {
+        const content = readFileSync(BUDDY_LOG_PATH, "utf-8");
+        const lines = content.split("\n");
+        writeFileSync(BUDDY_LOG_PATH, lines.slice(-500).join("\n") + "\n");
+        log(`Log rotated (was ${Math.round(size / 1024)}KB, kept last 500 lines)`);
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
 
   // Preflight: check ~/.claude/ exists
   if (!existsSync(CLAUDE_HOME)) {
