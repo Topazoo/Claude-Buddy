@@ -8,12 +8,14 @@ import { StatsBar } from "./StatsBar.js";
 import { ActivityLog } from "./ActivityLog.js";
 import { KeyHints } from "./KeyHints.js";
 import { Divider } from "./Divider.js";
+import { ScrollText } from "./ScrollText.js";
 import { SocketClient } from "../socket-client.js";
 import { loadGlobalState } from "../persistence.js";
 import type { PetState } from "../pet/state.js";
 import type { Species } from "../pet/species.js";
 import { getPalette } from "../pet/palettes.js";
 import { computeLevel } from "../pet/state.js";
+import { TRAIT_DEFINITIONS } from "../daemon/traits.js";
 
 interface RecentEvent {
   summary: string;
@@ -167,90 +169,114 @@ export function App({ demo }: AppProps) {
 
   const species = state.pet.species as Species;
   const palette = getPalette(species, state.pet.paletteId ?? 0);
-  const traits = Object.entries(state.pet.traits).map(([id, t]) => `${id} Lv.${t.level}`);
+  const traits = Object.entries(state.pet.traits).map(([id, t]) => {
+    const def = TRAIT_DEFINITIONS.find((d) => d.id === id);
+    return { name: def?.name ?? id, level: t.level, effect: def?.effect ?? "" };
+  });
   const c = state.pet.activityCounters;
   const totalXp = c.bashCalls + c.readCalls + c.writeCalls + c.editCalls + c.searchCalls + c.fetchCalls;
   const level = computeLevel(c, Object.keys(state.pet.traits).length);
   const nextLevelXp = Math.pow(level, 2) * 100;
   const xpProgress = Math.min(totalXp / Math.max(nextLevelXp, 1), 1);
-  const xpBarWidth = 15;
+  const xpBarWidth = 10;
   const xpFilled = Math.round(xpProgress * xpBarWidth);
+
+  const statBar = (label: string, value: number) => {
+    const filled = Math.round(value / 2.5);
+    return `${label} ${"█".repeat(filled)}${"░".repeat(8 - filled)} ${value}`;
+  };
+  const rightWidth = 26;
+
+  const toolPair = (l1: string, v1: number, l2: string, v2: number) => {
+    const left = v1 > 0 ? `${l1.padEnd(7)}${String(v1).padStart(4)}` : "           ";
+    const right = v2 > 0 ? `${l2.padEnd(7)}${String(v2).padStart(4)}` : "";
+    return <Text dimColor key={l1}>{left} {right}</Text>;
+  };
 
   return (
     <Box flexDirection="column" padding={1}>
-      <SpeechBubble text={state.speechText} tick={state.tick} />
-      <Particles particles={state.particles} />
-      <Sprite
-        species={species}
-        animation={state.animation}
-        tick={state.tick}
-        palette={palette}
-        level={level}
-      />
-      <Text> </Text>
-      <PetInfo
-        name={state.pet.name}
-        species={species}
-        level={level}
-        mood={state.pet.mood}
-        traits={traits}
-      />
-      <Text> </Text>
-      <StatsBar mood={state.pet.mood} totalXp={totalXp} />
-      <Box paddingLeft={1}>
-        <Text>
-          <Text dimColor>XP </Text>
-          <Text color="#FECA57">{"█".repeat(xpFilled)}</Text>
-          <Text dimColor>{"░".repeat(xpBarWidth - xpFilled)}</Text>
-          <Text dimColor> {totalXp}</Text>
-        </Text>
-      </Box>
-      <Text> </Text>
-      <Divider label="Stats" />
-      <Box flexDirection="column" paddingLeft={1}>
-        <Text dimColor>  DBG {"█".repeat(Math.round(state.pet.stats.debugging / 2))}{"░".repeat(10 - Math.round(state.pet.stats.debugging / 2))} {state.pet.stats.debugging}</Text>
-        <Text dimColor>  PAT {"█".repeat(Math.round(state.pet.stats.patience / 2))}{"░".repeat(10 - Math.round(state.pet.stats.patience / 2))} {state.pet.stats.patience}</Text>
-        <Text dimColor>  CHS {"█".repeat(Math.round(state.pet.stats.chaos / 2))}{"░".repeat(10 - Math.round(state.pet.stats.chaos / 2))} {state.pet.stats.chaos}</Text>
-        <Text dimColor>  WIS {"█".repeat(Math.round(state.pet.stats.wisdom / 2))}{"░".repeat(10 - Math.round(state.pet.stats.wisdom / 2))} {state.pet.stats.wisdom}</Text>
-        <Text dimColor>  SNK {"█".repeat(Math.round(state.pet.stats.snark / 2))}{"░".repeat(10 - Math.round(state.pet.stats.snark / 2))} {state.pet.stats.snark}</Text>
-      </Box>
-      <Text> </Text>
-      <Divider label="Tools" />
-      <Box paddingLeft={1}>
-        <Text dimColor>
-          {totalXp === 0 ? "  No activity yet" :
-            [
-              c.bashCalls > 0 ? `B:${c.bashCalls}` : "",
-              c.editCalls > 0 ? `E:${c.editCalls}` : "",
-              c.writeCalls > 0 ? `W:${c.writeCalls}` : "",
-              c.readCalls > 0 ? `R:${c.readCalls}` : "",
-              c.searchCalls > 0 ? `S:${c.searchCalls}` : "",
-              c.fetchCalls > 0 ? `F:${c.fetchCalls}` : "",
-            ].filter(Boolean).join(" ")
-          }
-          {c.errorCount > 0 ? ` Err:${c.errorCount}` : ""}
-        </Text>
-      </Box>
-      <Text> </Text>
-      <Divider label="Recent" />
-      <Box flexDirection="column" paddingLeft={1}>
-        {state.recentEvents.length === 0 && (
-          <Text dimColor>  Waiting for events...</Text>
-        )}
-        {state.recentEvents.slice(-3).map((ev, i) => (
-          <Text key={i} dimColor>
-            {"  \u25B8"} {(ev.summary ?? "").slice(0, 30)}
-          </Text>
-        ))}
-      </Box>
-      <Text> </Text>
+      <KeyHints />
       {!state.connected && !demo && (
-        <Box flexDirection="column">
-          <Text color="#FF6B81">{"  \u26A0"} daemon offline</Text>
-          <Text dimColor>{"  "}claude-buddy daemon run</Text>
+        <Box marginBottom={1}>
+          <Text color="#FF6B81">{"\u26A0"} daemon offline </Text>
+          <Text dimColor>claude-buddy daemon run</Text>
         </Box>
       )}
-      <KeyHints />
+      <SpeechBubble text={state.speechText} tick={state.tick} />
+      <Box flexDirection="row">
+        {/* Left column: sprite + mood + traits — bottom-aligned */}
+        <Box flexDirection="column" width={24} justifyContent="flex-end">
+          <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+            <Particles particles={state.particles} />
+            <Sprite
+              species={species}
+              animation={state.animation}
+              tick={state.tick}
+              palette={palette}
+              level={level}
+            />
+          </Box>
+          <Box paddingLeft={1} flexDirection="column">
+            <Text bold>{state.pet.name}</Text>
+            <Text dimColor>Lv.{level} {state.pet.mood}</Text>
+            <Text>
+              <Text dimColor>XP </Text>
+              <Text color="#FECA57">{"█".repeat(xpFilled)}</Text>
+              <Text dimColor>{"░".repeat(xpBarWidth - xpFilled)}</Text>
+            </Text>
+          </Box>
+          {traits.length > 0 && (
+            <Box flexDirection="column" marginTop={1} paddingLeft={1}>
+              <Text dimColor>Traits</Text>
+              {traits.map((t, i) => (
+                <Box key={i} flexDirection="column">
+                  <Text> {t.name} <Text dimColor>Lv.{t.level}</Text></Text>
+                  <Text dimColor italic> {t.effect}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
+
+        {/* Right column: name + stats + tools + recent */}
+        <Box flexDirection="column" marginLeft={2} flexGrow={1}>
+          <Divider label="Stats" width={rightWidth} />
+          <Box flexDirection="column" paddingLeft={1}>
+            <Text dimColor>{statBar("DBG", state.pet.stats.debugging)}</Text>
+            <Text dimColor>{statBar("PAT", state.pet.stats.patience)}</Text>
+            <Text dimColor>{statBar("CHS", state.pet.stats.chaos)}</Text>
+            <Text dimColor>{statBar("WIS", state.pet.stats.wisdom)}</Text>
+            <Text dimColor>{statBar("SNK", state.pet.stats.snark)}</Text>
+          </Box>
+          <Text> </Text>
+          <Divider label="Tools" width={rightWidth} />
+          <Box flexDirection="column" paddingLeft={1}>
+            {totalXp === 0 ? (
+              <Text dimColor>No activity yet</Text>
+            ) : (
+              <>
+                {toolPair("Bash", c.bashCalls, "Read", c.readCalls)}
+                {toolPair("Edit", c.editCalls, "Search", c.searchCalls)}
+                {toolPair("Write", c.writeCalls, "Fetch", c.fetchCalls)}
+                {c.errorCount > 0 && <Text dimColor>{"Errors".padEnd(7)}{String(c.errorCount).padStart(4)}</Text>}
+              </>
+            )}
+          </Box>
+          <Text> </Text>
+          <Divider label="Recent" width={rightWidth} />
+          <Box flexDirection="column" paddingLeft={1}>
+            {state.recentEvents.length === 0 && (
+              <Text dimColor>Waiting for events...</Text>
+            )}
+            {state.recentEvents.slice(-3).map((ev, i) => (
+              <Box key={i}>
+                <Text dimColor>{"\u25B8"} </Text>
+                <ScrollText text={ev.summary ?? ""} maxWidth={rightWidth - 4} tick={state.tick} dimColor />
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }

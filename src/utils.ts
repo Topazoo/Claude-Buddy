@@ -1,3 +1,4 @@
+import { appendFileSync, existsSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -64,3 +65,22 @@ export const BUDDY_LOG_PATH = join(BUDDY_HOME, "daemon.log");
 export const CLAUDE_HOME = join(homedir(), ".claude");
 export const CLAUDE_PROJECTS_DIR = join(CLAUDE_HOME, "projects");
 export const CLAUDE_SETTINGS_PATH = join(CLAUDE_HOME, "settings.json");
+
+// --- Logging ---
+
+/** Append a timestamped log line to ~/.claude-buddy/daemon.log. Never throws.
+ *  Log file is created with 0o600 permissions (owner-only). */
+export function buddyLog(component: string, msg: string): void {
+  try {
+    mkdirSync(BUDDY_HOME, { recursive: true, mode: 0o700 });
+    // Create file with restrictive permissions if it doesn't exist
+    if (!existsSync(BUDDY_LOG_PATH)) {
+      const fd = openSync(BUDDY_LOG_PATH, "a", 0o600);
+      closeSync(fd);
+    }
+    const ts = new Date().toISOString();
+    appendFileSync(BUDDY_LOG_PATH, `[${ts}] [${component}] ${msg}\n`);
+  } catch {
+    // Logging must never cause a failure
+  }
+}

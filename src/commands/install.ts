@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
@@ -116,6 +116,10 @@ function registerClaudeIntegration(): void {
   hooks.PostToolUse = filtered;
   settings.hooks = hooks;
 
+  // Back up existing settings before overwriting
+  if (existsSync(CLAUDE_SETTINGS_PATH)) {
+    copyFileSync(CLAUDE_SETTINGS_PATH, CLAUDE_SETTINGS_PATH + ".buddy-backup");
+  }
   writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2));
 }
 

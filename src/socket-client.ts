@@ -59,30 +59,31 @@ export class SocketClient {
     }
   }
 
-  /** Send and immediately disconnect. For fire-and-forget (hook events). */
-  sendAndClose(msg: Record<string, unknown>, timeoutMs = 500): Promise<void> {
+  /** Send and immediately disconnect. For fire-and-forget (hook events).
+   *  Returns true if sent successfully, false on timeout/error. */
+  sendAndClose(msg: Record<string, unknown>, timeoutMs = 500): Promise<boolean> {
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => {
+      const finish = (ok: boolean) => {
         if (done) return;
         done = true;
         clearTimeout(deadline);
-        resolve();
+        resolve(ok);
       };
 
       const socket = createConnection(BUDDY_SOCKET_PATH, () => {
         socket.write(JSON.stringify(msg) + "\n", () => {
           socket.end();
-          finish();
+          finish(true);
         });
       });
       const deadline = setTimeout(() => {
         socket.destroy();
-        finish();
+        finish(false);
       }, timeoutMs);
       socket.on("error", () => {
         socket.destroy();
-        finish();
+        finish(false);
       });
     });
   }

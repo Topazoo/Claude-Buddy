@@ -3,12 +3,18 @@ import { Text, Box } from "ink";
 import { SPECIES } from "../pet/species.js";
 import type { Species } from "../pet/species.js";
 
+interface TraitDisplay {
+  name: string;
+  level: number;
+  effect: string;
+}
+
 interface PetInfoProps {
   name: string;
   species: Species;
   level: number;
   mood: string;
-  traits: string[];
+  traits: TraitDisplay[];
 }
 
 const MOOD_EMOJI: Record<string, string> = {
@@ -30,9 +36,15 @@ export function PetInfo({ name, species, level, mood, traits }: PetInfoProps) {
         {name} {def.emoji} Lv.{level} {moodDisplay}
       </Text>
       {traits.length > 0 && (
-        <Text dimColor>
-          {traits.join(" · ")}
-        </Text>
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>Traits</Text>
+          {traits.map((t, i) => (
+            <Box key={i} flexDirection="column">
+              <Text>  {t.name} <Text dimColor>Lv.{t.level}</Text></Text>
+              <Text dimColor italic>  {t.effect}</Text>
+            </Box>
+          ))}
+        </Box>
       )}
     </Box>
   );

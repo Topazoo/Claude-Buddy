@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { SocketClient } from "../socket-client.js";
 import { loadGlobalState } from "../persistence.js";
+import { buddyLog } from "../utils.js";
 import { buildPersonalityContext } from "../pet/personality.js";
 import { SPECIES } from "../pet/species.js";
 import type { Species } from "../pet/species.js";
@@ -51,14 +52,16 @@ export async function runMcpServer(): Promise<void> {
       });
       // Request initial state
       daemonClient.send({ type: "get_state" });
-    } catch {
+      buddyLog("mcp", "Connected to daemon");
+    } catch (err) {
       daemonClient = null;
-      // Daemon not running -- fall back to disk state
+      buddyLog("mcp", `Daemon connect failed (using disk fallback): ${err instanceof Error ? err.message : err}`);
     }
   }
 
   // Connect to daemon in background — don't block MCP server startup.
   // Tools have disk-state fallback, so this is safe.
+  buddyLog("mcp", "MCP server starting");
   connectToDaemon().catch(() => { /* already handled inside */ });
 
   /**

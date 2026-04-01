@@ -1,9 +1,9 @@
 import { execSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, openSync } from "node:fs";
 import React from "react";
 import { render } from "ink";
 import { App } from "../renderer/App.js";
-import { BUDDY_SOCKET_PATH } from "../utils.js";
+import { BUDDY_SOCKET_PATH, BUDDY_HOME, BUDDY_LOG_PATH } from "../utils.js";
 
 function hasTmux(): boolean {
   try {
@@ -39,9 +39,11 @@ function isDaemonRunning(): boolean {
 
 function ensureDaemon(): void {
   if (isDaemonRunning()) return;
+  mkdirSync(BUDDY_HOME, { recursive: true });
+  const logFd = openSync(BUDDY_LOG_PATH, "a");
   const child = spawn("claude-buddy", ["daemon", "run"], {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", logFd],
   });
   child.unref();
 }
@@ -77,11 +79,11 @@ export async function paneCommand(opts: { render?: boolean }): Promise<void> {
   const renderCmd = "claude-buddy pane --render";
 
   if (inTmux()) {
-    execSync(`tmux split-window -d -h -l 35 '${renderCmd}'`, { stdio: "inherit" });
+    execSync(`tmux split-window -d -h -l 58 '${renderCmd}'`, { stdio: "inherit" });
   } else {
     if (buddySessionExists()) killBuddySession();
     execSync(`tmux new-session -d -s buddy -x 120 -y 40`, { stdio: "ignore" });
-    execSync(`tmux split-window -d -h -l 35 -t buddy '${renderCmd}'`, { stdio: "ignore" });
+    execSync(`tmux split-window -d -h -l 58 -t buddy '${renderCmd}'`, { stdio: "ignore" });
     execSync(`tmux attach -t buddy`, { stdio: "inherit" });
   }
 

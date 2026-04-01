@@ -1,5 +1,5 @@
 import { createServer, type Server, type Socket } from "node:net";
-import { existsSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { BUDDY_SOCKET_PATH } from "../utils.js";
 
 export type MessageHandler = (msg: Record<string, unknown>, client: Socket) => void;
@@ -54,7 +54,11 @@ export class SocketServer {
       });
 
       this.server.on("error", reject);
-      this.server.listen(BUDDY_SOCKET_PATH, () => resolve());
+      this.server.listen(BUDDY_SOCKET_PATH, () => {
+        // Restrict socket to owner-only access
+        try { chmodSync(BUDDY_SOCKET_PATH, 0o600); } catch { /* non-fatal */ }
+        resolve();
+      });
     });
   }
 
