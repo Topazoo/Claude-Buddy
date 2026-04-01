@@ -223,7 +223,7 @@ export async function runDaemon(): Promise<void> {
         server.broadcast({
           type: "tool_event",
           tool: "Feed",
-          detail: "fed!",
+          summary: "Fed your buddy!",
           timestamp: Date.now(),
         });
       }
@@ -239,7 +239,7 @@ export async function runDaemon(): Promise<void> {
         server.broadcast({
           type: "tool_event",
           tool: "Pet",
-          detail: "petted!",
+          summary: "Petted your buddy!",
           timestamp: Date.now(),
         });
       }
