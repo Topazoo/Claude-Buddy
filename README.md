@@ -30,6 +30,7 @@ A Tamagotchi-style terminal companion for [Claude Code](https://claude.ai/code).
 ```bash
 git clone <repo-url> && cd buddy
 npm install          # auto-builds via postinstall
+npm link             # links the claude-buddy binary
 npm run setup        # registers with Claude Code, hatches pet, starts daemon
 ```
 
